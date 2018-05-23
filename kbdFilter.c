@@ -15,14 +15,93 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	DriverObject->MajorFunction[IRP_MJ_PNP] = PnpDispatch;             
 	DriverObject->MajorFunction[IRP_MJ_POWER] = PowerDispatch;
 
+	//*Now I do not need the "AddDevice"
 	//Set the Filter attached function(I want to use the Pnp attach)
-	DriverObject->DriverExtension->AddDevice = AddFilter;
+//*	DriverObject->DriverExtension->AddDevice = AddFilter;
 
 	//Set the driver unload function 
 	//(when we unload filter manually, we need to ensure that there is no IRP don't return)
 	DriverObject->DriverUnload = FilterUnload;
+
+	//*Now I need a function to add the device just like NT driver, and I use the old name
+	AddFilter(DriverObject, RegistryPath);
 }
 
+NTSTATUS AddFilter(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
+{
+	NTSTATUS status;
+
+	UNICODE_STRING NameString;
+	PKBD_FILTER_EXTENSION filterExt;
+	PDEVICE_OBJECT kbdFilter;
+	PDEVICE_OBJECT AttachedDevice;
+	PDEVICE_OBJECT kbdDevice;
+
+	PDRIVER_OBJECT kbdDriverObject;
+
+	RtlInitUnicodeString(&NameString, KBD_DRIVER_NAME);
+	status = ObReferenceObjectByName(
+		&NameString,
+		OBJ_CASE_INSENSITIVE,
+		NULL,
+		0,
+		IoDriverObjectType,
+		KernelMode,
+		NULL,
+		&kbdDriverObject);
+	if(!NT_SUCCESS(status))
+	{
+		return status;
+	}
+	else
+	{
+		//I do not understand it actually
+		ObDereferenceObject(DriverObject);
+	}
+
+
+	kbdDevice = kbdDriverObject->DeviceObject;
+	while(kbdDevice)
+	{
+		status = IoCreateDevice(
+			kbdFilter,
+			sizeof(KBD_FILTER_EXTENSION),
+			NULL,
+			kbdDevice->DeviceType,
+			kbdDevice->Characteristics,
+			TRUE,
+			&kbdFilter);
+		if(!NT_SUCCESS(status))
+		{
+			return status;
+		}
+		filterExt = (PKBD_FILTER_EXTENSION)kbdFilter->DeviceExtension;
+
+		IoAttachDeviceToDevicestackSafe(
+			kbdFilter,
+			kbdDevice,
+			AttachedDevice);
+
+		//Set the DeviceExtension of the filter 
+		filterExt->DeviceObject = kbdFilter;
+		filterExt->LowerDeviceObject = AttachedDevice;
+		filterExt->Pdo = kbdDevice;
+
+		//Set the other aspects of the filter
+		kbdFilter->DeviceType = AttachedDevice->DeviceType;
+		kbdFilter->Characteristics = AttachedDevice->Characteristics;
+		kbdFilter->StackSize = AttachedDevice->StackSize + 1;
+		//Set the flags of the filter device 
+		kbdFilter->Flags |= AttachedDevice->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO | DO_POWER_PAGABLE);
+		kbdFilter->Flags &= ~DO_DEVICE_INITIALIZING;
+
+		kbdDevice = kbdDevice->NextDevice;
+	}
+
+	return status;
+}
+
+/*
 //Create a filter device object, and attach it to the device stack
 NTSTATUS AddFilter(PDRIVER_OBJECT DirverObject, PDEVICE_OBJCET pdo)
 {
@@ -67,6 +146,7 @@ NTSTATUS AddFilter(PDRIVER_OBJECT DirverObject, PDEVICE_OBJCET pdo)
 	//Return the status, but I do not consider the failure of 'create & attach'
 	return status;
 }
+*/
 
 NTSTATUS DefaultDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
@@ -113,6 +193,47 @@ NTSTATUS PowerDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return status;
 }
 
+//Now I need to process the manually unload of the NT type filter 
+VOID FilterUnload(PDRIVER_OBJECT DriverObject)
+{
+	PDEVICE_OBJECT kbdFilter;
+	PKBD_FILTER_EXTENSION filterExt;
+	//The process of Delay is copied from the book
+	LARGE_INTEGER lDelay;
+	lDelay = RtlConvertLongToLargeInteger(100 * DELAY_ONE_MILLISECOND);
+
+	//Detach and delete the device
+	kbdFilter = DriverObject->DeviceObject;
+	while(kbdFilter)
+	{
+		filterExt = (PKBD_FILTER_EXTENSION)kbdFilter->DeviceExtension;
+
+		//First detach the device so that it no longer receive the IRP 
+		status = IoDetachDevice(filterExt->LowerDeviceObject);
+		if(!NT_SUCCESS(status))
+		{
+			KdPrint(("failed"));
+		}
+
+		//Set the next device before deleting this device
+		kbdFilter = kbdFilter->NextDevice;
+
+		//wait for final IRP's finish aobut this device
+		while(filterExt->CountNum)
+		{
+			KeDelayExecutionThraed(KernelMode, FALSE, &lDelay);
+		}
+
+		///Delete the filter device with the DeviceExtension
+		status = IoDeleteDevice(filterExt->DeviceObject);
+		if(!NT_SUCCESS(status))
+		{
+			KdPrint(("failed"));
+		}
+	}
+}
+
+/*
 NTSTATUS FilterUnload(PDRIVER_OBJECT DriverObject)
 {
 	NTSTATUS status;
@@ -121,6 +242,7 @@ NTSTATUS FilterUnload(PDRIVER_OBJECT DriverObject)
 	status = STATUS_SUCCESS;
 	return status;
 }
+*/
 
 NTSTATUS ReadDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {

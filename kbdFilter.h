@@ -1,6 +1,23 @@
-#include "wdm.h"
+#include "ntddk.h"
 
-//Declare the function used
+//The process of Delay is copied from the book
+#define DELAY_ONE_MICROSECOND (-10)
+#define DELAY_ONE_MILLISECOND (DELAY_ONE_MICROSECOND * 1000)
+#define DELAY_ONE_SECOND (DELAY_ONE_MILLISECOND * 1000)
+
+//*Declare the function&variable used in this NT driver
+extern POBJECT_TYPE IoDriverObjectType
+#define KBD_DRIVER_NAME L"\\Driver\\Kbdclass"
+NTSTATUS ObReferenceObjectByName(
+	PUNICODE_STRING ObjectName,
+	ULONG Attributes,
+	PACCESS_STATE AccessState,
+	ACCESS_MASK DesiredAccess,
+	POBJECT_TYPE ObjectType,
+	KPROCESSOR_MODE AccessMode,
+	PVOID ParseContext,
+	PVOID *Object
+	)
 
 //Filter-device's extension 
 typedef struct _KBD_FILTER_EXT
@@ -26,5 +43,8 @@ NTSTATUS PnpDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS ReadDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS ReadComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context);
 
+/*
 NTSTATUS AddFilter(PDRIVER_OBJECT DriverObject, PDEIVE_OBJECT pdo);
-NTSTATUS FilterUnload(PDRIVER_OBJECT DriverObject);
+*/
+NTSTATUS AddFilter(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath);
+VOID FilterUnload(PDRIVER_OBJECT DriverObject);
