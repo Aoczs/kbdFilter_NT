@@ -1,3 +1,4 @@
+#pragma once
 #include "ntddk.h"
 
 //The process of Delay is copied from the book
@@ -6,8 +7,8 @@
 #define DELAY_ONE_SECOND (DELAY_ONE_MILLISECOND * 1000)
 
 //*Declare the function&variable used in this NT driver
-extern POBJECT_TYPE IoDriverObjectType
-#define KBD_DRIVER_NAME L"\\Driver\\Kbdclass"
+extern POBJECT_TYPE *IoDriverObjectType;
+#define KBD_DRIVER_NAME L"\\Driver\\kbdclass"
 NTSTATUS ObReferenceObjectByName(
 	PUNICODE_STRING ObjectName,
 	ULONG Attributes,
@@ -17,7 +18,16 @@ NTSTATUS ObReferenceObjectByName(
 	KPROCESSOR_MODE AccessMode,
 	PVOID ParseContext,
 	PVOID *Object
-	)
+);
+
+typedef struct _KEYBOARD_INPUT_DATA {
+	USHORT UnitId;
+	USHORT MakeCode;
+	USHORT Flags;
+	USHORT Reserved;
+	ULONG  ExtraInformation;
+} KEYBOARD_INPUT_DATA, *PKEYBOARD_INPUT_DATA;
+
 
 //Filter-device's extension 
 typedef struct _KBD_FILTER_EXT
@@ -31,7 +41,7 @@ typedef struct _KBD_FILTER_EXT
 	//Symbolic name
 	UNICODE_STRING SymbolicName;
 	//Number of the "I/RP_MJ_READ" Irp
-	ULONG CountNum = 0;
+	int CountNum;
 
 }KBD_FILTER_EXT, *PKBD_FILTER_EXT;
 
